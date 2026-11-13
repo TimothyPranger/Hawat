@@ -1,0 +1,21 @@
+{
+  "port": 8719,
+  "anthropic": { "baseUrl": "https://api.anthropic.com" },
+  "local": { "baseUrl": "http://127.0.0.1:1234", "apiKey": "lmstudio" },
+  "localEnabled": true,
+  "routes": [
+    {
+      "name": "local-worker",
+      "match": { "model": "local-qwen" },
+      "target": "local",
+      "rewriteModel": "auto",
+      "fallbackModel": "claude-haiku-5-5",
+      "fallbackOnLocalDown": false,
+      "stripBodyFields": ["context_management", "output_config"],
+      "thinking": "strip",
+      "stripCacheControl": true,
+      "stripToolFields": ["defer_loading", "strict", "eager_input_streaming"],
+      "stripHeaders": []
+    }
+  ]
+}

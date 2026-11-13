@@ -1,0 +1,4 @@
+node_modules/
+logs/
+hawat.config.local.json
+.DS_Store

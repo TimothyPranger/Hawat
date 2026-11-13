@@ -1,0 +1,16 @@
+## Delegating to the local worker
+
+A `local-worker` subagent runs on a local model and costs no Claude tokens. Use it for bulk,
+mechanical, well-specified work: renames and refactors across many files, boilerplate, unit tests
+for existing code, doc comments, repetitive edits, simple searches.
+
+Keep for yourself: design decisions, unclear requirements, security-sensitive code, debugging where
+the cause is unknown, and the final review.
+
+When you delegate:
+- Write a self-contained brief: the goal, the exact files or folders, constraints, the build or test
+  command that proves it worked, and what not to touch. The worker sees none of this conversation.
+- Name paths instead of pasting file contents into the brief.
+- Start at most two local workers at once. The local model is slow.
+- Check the result by running the build or tests yourself and reading only the riskiest parts of the diff.
+- If a worker fails twice, split the task or do it yourself. Do not loop.

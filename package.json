@@ -1,0 +1,23 @@
+{
+  "name": "hawat",
+  "version": "0.1.0",
+  "description": "Hawat: a local Claude Code proxy that sends chosen subagent requests to LM Studio and passes everything else to Anthropic untouched, with a live inspector GUI.",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "hawat": "bin/hawat.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/hawat.js",
+    "test": "node --test test/*.test.js",
+    "demo": "node scripts/demo.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TimothyPranger/Hawat.git"
+  },
+  "homepage": "https://github.com/TimothyPranger/Hawat"
+}
