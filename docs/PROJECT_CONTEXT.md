@@ -101,6 +101,13 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
 5. Whether `isolation: worktree` behaves as wanted. The worktree starts from the default branch, not
    uncommitted work.
 6. Whether the settings `env` block applies in the Claude desktop/chat surfaces the user uses.
+   **Result (2026-11-13, Claude Code 2.1.321 in desktop app 5.11492.2): it did not redirect.** A project
+   `.claude/settings.local.json` with only `ANTHROPIC_BASE_URL=http://127.0.0.1:8719` was ignored: a session
+   the user opened by hand in that folder (trust prompt accepted) answered "hi" and `/status` worked, but
+   Hawat logged 0 requests. The app puts `ANTHROPIC_BASE_URL=https://api.anthropic.com` in every session's
+   environment, which appears to win. Not tried yet: `~/.claude/settings.json`, terminal `claude` with the
+   variable set, or the headless `claude -p` worker. `/status` shows the account as a Team plan sign-in, not
+   an API key.
 7. Anthropic's stance on subscription traffic through a self-run proxy. One secondary source claims a 2026
    terms update bars OAuth tokens in third-party tools; pass-through of the official CLI's own requests is a
    documented gateway pattern, but no explicit Anthropic statement was found. Requests to Anthropic leave
