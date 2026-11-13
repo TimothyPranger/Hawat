@@ -51,18 +51,20 @@ Hawat has to be running while Claude Code uses it. If you stop Hawat, Claude Cod
 
 ## Use it from the Claude desktop app (HTTPS proxy mode)
 
-The desktop app always sets its own `ANTHROPIC_BASE_URL`, so the base-URL route above does not work there. Anthropic's network docs say the proxy variables *can* be set in a settings file for a local session signed in with claude.ai, so Hawat can also act as an HTTPS proxy:
+The desktop app always sets its own `ANTHROPIC_BASE_URL`, so the base-URL route above does not work there. What does work (verified 2026-11-13 with Claude Code 2.1.321 in desktop app 5.11492.2) is making Hawat the session's HTTPS proxy:
 
 1. `node bin/hawat.js certs` creates a small local certificate authority limited to `api.anthropic.com`, signs one certificate, and **deletes the authority's private key**. Files go to `~/.hawat/certs`. Nothing is added to your keychain.
-2. Put the two lines it prints into the project's `.claude/settings.local.json`:
-   ```json
-   { "env": { "HTTPS_PROXY": "http://127.0.0.1:8719", "NODE_EXTRA_CA_CERTS": "/Users/you/.hawat/certs/ca.pem" } }
+2. In the desktop app, set two environment variables **for the project folder** (this is the app's own editor, not a settings file): open the environment settings for the folder, choose *Environment variables*, and enter `.env` format, one `KEY=value` per line, no quotes or braces:
    ```
-3. Start Hawat, then start a new session in that project. Claude Code connects to Hawat with `CONNECT`. Traffic to `api.anthropic.com` is decrypted by Hawat so it can read the model name; everything else (login, token refresh, GitHub, MCP servers) is a blind tunnel that Hawat does not read or record.
+   HTTPS_PROXY=http://127.0.0.1:8719
+   NODE_EXTRA_CA_CERTS=/Users/you/.hawat/certs/ca.pem
+   ```
+   Click *Done*. Only sessions started in that folder afterwards get them.
+3. Start Hawat, then start a **new** session in that folder. Claude Code connects to Hawat with `CONNECT`. Traffic to `api.anthropic.com` is decrypted by Hawat so it can read the model name; everything else (login, token refresh, GitHub, MCP servers, telemetry) is a blind tunnel that Hawat does not read or record.
 
-Routing, header handling and the guarantees below are the same as in base-URL mode. If Hawat is not running, Claude Code cannot reach the API until you start it or remove the two settings.
+Why not a settings file: when the app's launch environment already sets `HTTPS_PROXY` (it copies the macOS system proxy, for example Proxyman on port 9090), Claude Code ignores the settings-file value. The app's environment editor does override it. Other apps keep using the system proxy untouched.
 
-Notes: tunnels are counted in the inspector's state (`/__hawat/api/state`), not listed. A variable that the app already sets in the session's launch environment wins over the settings file; `/status` and the inspector show whether it took effect. Set `intercept.tunnel` to `false` to refuse all non-intercepted hosts.
+Routing, header handling and the guarantees below are the same as in base-URL mode. If Hawat is not running, a session started with these variables cannot reach the API until you start Hawat or remove the variables. Tunnels are counted in the inspector's state (`/__hawat/api/state`), not listed. Set `intercept.tunnel` to `false` to refuse all non-intercepted hosts.
 
 ## Add the local worker
 

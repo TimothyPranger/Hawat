@@ -97,10 +97,10 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
 3. Whether Claude Code behaves behind a custom base URL for tool search (`ENABLE_TOOL_SEARCH` may be needed
    with many MCP servers) and for `/v1/messages/count_tokens` against the local route (Hawat routes that
    path to LM Studio too; LM Studio support is unknown).
-4. Whether prompt caching survives: main-session requests should show `cache_read` tokens in the inspector.
+4. ~~Whether prompt caching survives~~ RESOLVED: cache reads of 56k-70k tokens seen on passthrough requests (desktop session through Hawat).
 5. Whether `isolation: worktree` behaves as wanted. The worktree starts from the default branch, not
    uncommitted work.
-6. Whether the settings `env` block applies in the Claude desktop/chat surfaces the user uses.
+6. Whether the settings `env` block applies in the Claude desktop/chat surfaces the user uses. (See the result below; the working route is the app's folder-scoped environment editor, not the settings file.)
    **Result (2026-11-13, Claude Code 2.1.321 in desktop app 5.11492.2): it did not redirect.** A project
    `.claude/settings.local.json` with only `ANTHROPIC_BASE_URL=http://127.0.0.1:8719` was ignored: a session
    the user opened by hand in that folder (trust prompt accepted) answered "hi" and `/status` worked, but
@@ -113,17 +113,29 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
    documented gateway pattern, but no explicit Anthropic statement was found. Requests to Anthropic leave
    from Node rather than Claude Code's network stack; no evidence of blocking was found.
 
-## Desktop app route: HTTPS proxy mode (added 2026-11-13)
+## Desktop app route: HTTPS proxy mode (added and verified 2026-11-13)
 
-The desktop app (Claude Code 2.1.321, app 5.11492.2) always injects its own `ANTHROPIC_BASE_URL`, and in its
-code the override that could change this is gated behind an Anthropic-signed token (we do not bypass it; patching a
-copy of the app was explored and abandoned). Anthropic's network docs
-(code.claude.com/docs/en/network-config) say `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` can be set in any settings file
-for a local session signed in with claude.ai, and that Claude Code trusts extra CAs. So Hawat now also acts as an
-HTTPS proxy: `CONNECT api.anthropic.com:443` is decrypted with a name-constrained local certificate
-(`hawat certs`, CA key deleted after signing), all other hosts are blind tunnels. Verified by tests (19/19) against
-fake servers. **UNVERIFIED in practice:** that the desktop app really applies those two variables from a project
-settings file, and that the model requests of a subscription session use `HTTPS_PROXY`.
+The desktop app (Claude Code 2.1.321, app 5.11492.2) always injects its own `ANTHROPIC_BASE_URL`; in its code the
+override that could change this is gated behind an Anthropic-signed token (we do not bypass it; patching a copy of
+the app was explored and abandoned). It also copies the macOS system proxy into each session's environment
+(here Proxyman, `HTTPS_PROXY=http://127.0.0.1:9090`); a settings-file value does not beat that.
+
+What works: Hawat as an HTTPS proxy. `hawat certs` makes a name-constrained local CA (api.anthropic.com only, CA
+key deleted after signing). In the desktop app, the folder-scoped *Environment variables* editor (`.env` format)
+with `HTTPS_PROXY=http://127.0.0.1:8719` and `NODE_EXTRA_CA_CERTS=<ca.pem>` overrides the app's value for new
+sessions in that folder. Hawat decrypts only `api.anthropic.com` (CONNECT) and tunnels everything else blind.
+
+**Verified** (first real session, 72 requests): the desktop session's requests appear in the inspector as
+passthrough with HTTP 200, login intact, and `cache_read_input_tokens` in the tens of thousands (prompt caching
+survives: UNVERIFIED item 4 is resolved). Also seen: Claude Code sends many `/v1/messages/count_tokens` requests
+(~40 in a short session) and `/api/...` calls; all passed through. NODE_EXTRA_CA_CERTS is not visible in the
+Bash tool's environment, but TLS to Hawat's certificate works, so the CLI process has it.
+Setup gotchas: the editor wants `.env` format (JSON gives "Couldn't parse"), must be saved with *Done*, and only
+sessions started afterwards pick it up. Quitting Proxyman while the system proxy still points at it breaks
+anything honouring that proxy.
+
+Still unverified: item 2 (local-qwen as a subagent model), item 1 (LM Studio accepting real Claude Code requests),
+and how `/v1/messages/count_tokens` behaves on the local route.
 
 ## Real-world verification plan
 
