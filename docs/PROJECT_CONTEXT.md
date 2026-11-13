@@ -82,9 +82,9 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
 
 ## Verification status
 
-- **Verified:** 14 `node:test` tests against fake Anthropic and LM Studio servers (byte-identical
+- **Verified:** 19 `node:test` tests against fake Anthropic and LM Studio servers (byte-identical
   passthrough incl. gzip, no credential leaks to LM Studio, streaming, outage, fallback, client abort, guards).
-  Re-run on Node 22.23.5: 14/14 pass. GUI exercised in headless Chromium in the chat session.
+  Re-run on Node 22.23.5: 19/19 pass. GUI exercised in headless Chromium in the chat session.
 - **Not yet run** against the real LM Studio or the real Anthropic API.
 
 ## UNVERIFIED (check first)
@@ -112,6 +112,18 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
    terms update bars OAuth tokens in third-party tools; pass-through of the official CLI's own requests is a
    documented gateway pattern, but no explicit Anthropic statement was found. Requests to Anthropic leave
    from Node rather than Claude Code's network stack; no evidence of blocking was found.
+
+## Desktop app route: HTTPS proxy mode (added 2026-11-13)
+
+The desktop app (Claude Code 2.1.321, app 5.11492.2) always injects its own `ANTHROPIC_BASE_URL`, and in its
+code the override that could change this is gated behind an Anthropic-signed token (we do not bypass it; patching a
+copy of the app was explored and abandoned). Anthropic's network docs
+(code.claude.com/docs/en/network-config) say `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` can be set in any settings file
+for a local session signed in with claude.ai, and that Claude Code trusts extra CAs. So Hawat now also acts as an
+HTTPS proxy: `CONNECT api.anthropic.com:443` is decrypted with a name-constrained local certificate
+(`hawat certs`, CA key deleted after signing), all other hosts are blind tunnels. Verified by tests (19/19) against
+fake servers. **UNVERIFIED in practice:** that the desktop app really applies those two variables from a project
+settings file, and that the model requests of a subscription session use `HTTPS_PROXY`.
 
 ## Real-world verification plan
 

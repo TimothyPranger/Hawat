@@ -23,6 +23,7 @@ const DEFAULTS = {
       stripHeaders: [],
     },
   ],
+  intercept: { hosts: ['api.anthropic.com'], certDir: '~/.hawat/certs', tunnel: true },
   keepRecords: 300,
   maxBodyBytes: 1000000,
   maxTotalBytes: 300000000,
@@ -52,6 +53,8 @@ function validate(cfg) {
   url('local.baseUrl', cfg.local.baseUrl);
   if (!Number.isInteger(cfg.port) || cfg.port < 0 || cfg.port > 65535) problems.push('port must be 0-65535');
   if (!Array.isArray(cfg.routes)) problems.push('routes must be an array');
+  const ic = cfg.intercept || {};
+  if (!Array.isArray(ic.hosts) || !ic.hosts.every((h) => typeof h === 'string' && h.length)) problems.push('intercept.hosts must be a list of host names');
   for (const r of cfg.routes || []) {
     if (!r.name) problems.push('every route needs a name');
     if (!isObject(r.match) || !(r.match.model || r.match.modelPrefix || r.match.modelRegex || r.match.header)) {

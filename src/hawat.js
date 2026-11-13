@@ -1,6 +1,8 @@
 'use strict';
 const http = require('node:http');
 const https = require('node:https');
+const net = require('node:net');
+const tls = require('node:tls');
 const fs = require('node:fs');
 const path = require('node:path');
 const pkg = require('../package.json');
@@ -9,6 +11,7 @@ const { maskPairs } = require('./redact');
 const { decide, transformBodyForLocal, ALWAYS_STRIP_HEADERS } = require('./router');
 const { Store } = require('./store');
 const { BodyCapture } = require('./capture');
+const { loadLeaf } = require('./certs');
 
 const UI_DIR = path.join(__dirname, '..', 'ui');
 const NS = '/__hawat';
@@ -91,6 +94,8 @@ function createHawat(cfg) {
     startedAt: Date.now(),
     localEnabled: !!cfg.localEnabled,
     local: { ok: null, models: [], checkedAt: null, error: null },
+    intercept: { ready: false, hosts: [], reason: null },
+    tunnels: { total: 0, open: 0, hosts: {} },
   };
   const agents = {
     'http:': new http.Agent({ keepAlive: true }),
@@ -122,6 +127,8 @@ function createHawat(cfg) {
       localEnabled: state.localEnabled,
       local: state.local,
       anthropicBase: cfg.anthropic.baseUrl,
+      intercept: state.intercept,
+      tunnels: { total: state.tunnels.total, open: state.tunnels.open, hosts: Object.entries(state.tunnels.hosts).sort((a, b) => b[1] - a[1]).slice(0, 20) },
       localBase: cfg.local.baseUrl,
       keepRecords: cfg.keepRecords,
       logToFile: !!cfg.logToFile,
@@ -491,7 +498,95 @@ function createHawat(cfg) {
   });
   server.keepAliveTimeout = 65000;
 
+  // ---------- HTTPS proxy mode (CONNECT) ----------
+  // Claude Code is pointed here with HTTPS_PROXY. Hosts in cfg.intercept.hosts get TLS terminated with our own
+  // name-constrained certificate so the model field can be read and routed. Every other host is a blind tunnel.
+
+  const interceptHosts = new Set((cfg.intercept.hosts || []).map((h) => h.toLowerCase()));
+  let secureContext = null;
+  const tunnelSockets = new Set();
+
+  function loadIntercept() {
+    const leaf = loadLeaf(cfg.intercept.certDir);
+    if (!interceptHosts.size) { state.intercept = { ready: false, hosts: [], reason: 'no intercept hosts configured' }; return; }
+    if (!leaf) {
+      state.intercept = { ready: false, hosts: [...interceptHosts], reason: 'no certificate yet: run `node bin/hawat.js certs`' };
+      return;
+    }
+    try {
+      secureContext = tls.createSecureContext({ key: leaf.keyPem, cert: leaf.certPem });
+      state.intercept = { ready: true, hosts: [...interceptHosts], reason: null, certDir: leaf.dir, caFile: leaf.ca };
+    } catch (e) {
+      state.intercept = { ready: false, hosts: [...interceptHosts], reason: 'certificate not usable: ' + e.message };
+    }
+  }
+
+  function parseAuthority(a) {
+    const m = /^\[([^\]]+)\]:(\d+)$/.exec(a) || /^([^:]+):(\d+)$/.exec(a);
+    if (!m) return null;
+    const port = Number(m[2]);
+    if (!(port > 0 && port < 65536)) return null;
+    return { host: m[1].toLowerCase(), port };
+  }
+
+  // Requests that arrive inside an intercepted tunnel: same proxy logic, never the inspector.
+  const interceptServer = http.createServer((req, res) => {
+    handleProxy(req, res).catch((err) => {
+      try { plain(res, 500, 'hawat internal error: ' + err.message); } catch (e) { /* socket already gone */ }
+    });
+  });
+  interceptServer.keepAliveTimeout = 65000;
+
+  function refuseConnect(socket, status, text) {
+    try { socket.end('HTTP/1.1 ' + status + '\r\ncontent-type: text/plain\r\nconnection: close\r\ncontent-length: ' + Buffer.byteLength(text) + '\r\n\r\n' + text); } catch (e) { socket.destroy(); }
+  }
+
+  server.on('connect', (req, clientSocket, head) => {
+    clientSocket.on('error', () => {});
+    const target = parseAuthority(req.url || '');
+    if (!target) return refuseConnect(clientSocket, '400 Bad Request', 'hawat: expected CONNECT host:port');
+
+    if (interceptHosts.has(target.host)) {
+      if (target.port !== 443) return refuseConnect(clientSocket, '403 Forbidden', 'hawat: only port 443 is intercepted for ' + target.host);
+      if (!state.intercept.ready) return refuseConnect(clientSocket, '502 Bad Gateway', 'hawat: HTTPS interception is not set up (' + state.intercept.reason + ')');
+      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      if (head && head.length) clientSocket.unshift(head);
+      const tlsSocket = new tls.TLSSocket(clientSocket, { isServer: true, secureContext, ALPNProtocols: ['http/1.1'] });
+      tlsSocket.on('error', () => { tlsSocket.destroy(); });
+      interceptServer.emit('connection', tlsSocket);
+      return undefined;
+    }
+
+    if (cfg.intercept.tunnel === false) return refuseConnect(clientSocket, '403 Forbidden', 'hawat: tunnels are switched off');
+    const upstream = net.connect({ host: target.host, port: target.port });
+    tunnelSockets.add(clientSocket); tunnelSockets.add(upstream);
+    state.tunnels.total++; state.tunnels.open++;
+    state.tunnels.hosts[target.host] = (state.tunnels.hosts[target.host] || 0) + 1;
+    let counted = true;
+    const done = () => {
+      if (counted) { counted = false; state.tunnels.open--; }
+      tunnelSockets.delete(clientSocket); tunnelSockets.delete(upstream);
+      clientSocket.destroy(); upstream.destroy();
+    };
+    let established = false;
+    upstream.on('error', (e) => {
+      if (!established && !clientSocket.destroyed) refuseConnect(clientSocket, '502 Bad Gateway', 'hawat: could not reach ' + target.host + ': ' + e.message);
+      done();
+    });
+    upstream.on('connect', () => {
+      established = true;
+      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      if (head && head.length) upstream.write(head);
+      upstream.pipe(clientSocket);
+      clientSocket.pipe(upstream);
+    });
+    upstream.on('close', done);
+    clientSocket.on('close', done);
+    return undefined;
+  });
+
   async function start() {
+    loadIntercept();
     await new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(cfg.port, cfg.host, resolve);
@@ -510,6 +605,9 @@ function createHawat(cfg) {
     guiClients.clear();
     agents['http:'].destroy();
     agents['https:'].destroy();
+    for (const sock of tunnelSockets) sock.destroy();
+    tunnelSockets.clear();
+    await new Promise((resolve) => { interceptServer.close(() => resolve()); interceptServer.closeAllConnections(); });
     await new Promise((resolve) => { server.close(() => resolve()); server.closeAllConnections(); });
   }
 

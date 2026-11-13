@@ -32,7 +32,7 @@ The project lives in the Caladan Projects folder, and Caladan is the Atreides ho
 ```bash
 cd "/Users/admin_OLD/Projects/Caladan Projects/hawat"
 node -v            # must be 20 or higher
-npm test           # 14 tests against pretend Anthropic and LM Studio servers
+npm test           # 19 tests against pretend Anthropic and LM Studio servers
 npm run demo       # pretend traffic so you can explore the inspector: open the URL it prints
 npm start          # the real thing
 ```
@@ -48,6 +48,21 @@ Set only the base URL. Do **not** set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_K
 - Check: run `/status` in Claude Code and confirm it still shows your Claude login. In the inspector, ordinary requests should say "Sent to Anthropic untouched" and show cache read tokens once a conversation is going (that proves prompt caching survives).
 
 Hawat has to be running while Claude Code uses it. If you stop Hawat, Claude Code cannot connect until you start it again or remove the setting.
+
+## Use it from the Claude desktop app (HTTPS proxy mode)
+
+The desktop app always sets its own `ANTHROPIC_BASE_URL`, so the base-URL route above does not work there. Anthropic's network docs say the proxy variables *can* be set in a settings file for a local session signed in with claude.ai, so Hawat can also act as an HTTPS proxy:
+
+1. `node bin/hawat.js certs` creates a small local certificate authority limited to `api.anthropic.com`, signs one certificate, and **deletes the authority's private key**. Files go to `~/.hawat/certs`. Nothing is added to your keychain.
+2. Put the two lines it prints into the project's `.claude/settings.local.json`:
+   ```json
+   { "env": { "HTTPS_PROXY": "http://127.0.0.1:8719", "NODE_EXTRA_CA_CERTS": "/Users/you/.hawat/certs/ca.pem" } }
+   ```
+3. Start Hawat, then start a new session in that project. Claude Code connects to Hawat with `CONNECT`. Traffic to `api.anthropic.com` is decrypted by Hawat so it can read the model name; everything else (login, token refresh, GitHub, MCP servers) is a blind tunnel that Hawat does not read or record.
+
+Routing, header handling and the guarantees below are the same as in base-URL mode. If Hawat is not running, Claude Code cannot reach the API until you start it or remove the two settings.
+
+Notes: tunnels are counted in the inspector's state (`/__hawat/api/state`), not listed. A variable that the app already sets in the session's launch environment wins over the settings file; `/status` and the inspector show whether it took effect. Set `intercept.tunnel` to `false` to refuse all non-intercepted hosts.
 
 ## Add the local worker
 
@@ -74,6 +89,7 @@ Note: `isolation: worktree` gives each worker its own git worktree, which starts
 | `routes[].fallbackModel` | Used when local routing is switched off (and optionally when LM Studio is down): the request goes to Anthropic with this model, credentials intact. |
 | `routes[].fallbackOnLocalDown` | `false` (default): if LM Studio is down you get a clear error and spend no Claude tokens. `true`: retry on Anthropic with `fallbackModel`. |
 | `routes[].stripBodyFields`, `thinking`, `stripToolFields`, `stripCacheControl` | Fields Claude Code sends that a local server may reject. Adjust if LM Studio returns 400 errors; the inspector shows exactly what was removed. |
+| `intercept.hosts`, `intercept.certDir`, `intercept.tunnel` | HTTPS proxy mode: hosts to decrypt (default `api.anthropic.com`), where `hawat certs` keeps its files (default `~/.hawat/certs`), and whether other hosts may be tunnelled. Re-run `hawat certs --force` after changing the hosts. |
 | `keepRecords`, `maxBodyBytes`, `maxTotalBytes` | How much traffic is kept in memory for the inspector. |
 | `logToFile`, `logDir` | Off by default. When on, each finished request is appended to a daily `.jsonl` file. Bodies contain your code and prompts. |
 
@@ -83,6 +99,7 @@ Note: `isolation: worktree` gives each worker its own git worktree, which starts
 - One exception: a browser page request (`Accept: text/html`) for exactly `/` is redirected to the inspector. Claude Code never asks for that; Anthropic's API answers 404 there.
 - Your Claude credentials (`authorization`, `x-api-key`, cookies, `anthropic-beta`) are **never sent to LM Studio**, whatever the rules say. LM Studio only ever sees its own token.
 - Stored records mask credentials (first few characters only). Request and response bodies are shown unmasked because they are your own data; they stay in memory unless you enable file logging.
+- In HTTPS proxy mode only the hosts you list are decrypted, with a name-constrained certificate whose authority key is deleted after signing; other hosts are never read.
 - Hawat listens on loopback only, rejects unexpected `Host` headers (DNS rebinding), rejects requests that carry a browser `Origin`, and the inspector's write actions need a same-origin header.
 - If the local model is down you get an error in Anthropic's error format. Nothing falls back to Claude unless you asked for it.
 
@@ -100,6 +117,7 @@ Note: `isolation: worktree` gives each worker its own git worktree, which starts
 bin/hawat.js        CLI
 src/hawat.js        proxy, routing glue, inspector API
 src/router.js       rule matching and the local request rewrite
+src/certs.js        local certificate for HTTPS proxy mode
 src/capture.js      response observer (decode, reassemble streams)
 src/sse.js          Anthropic stream parser
 src/store.js        in-memory request records
