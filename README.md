@@ -49,6 +49,15 @@ Set only the base URL. Do **not** set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_K
 
 Hawat has to be running while Claude Code uses it. If you stop Hawat, Claude Code cannot connect until you start it again or remove the setting.
 
+## Start at login (macOS)
+
+`scripts/launchagent.sh install` registers two user-level launchd jobs (no admin rights):
+
+- `local.hawat` runs `scripts/start-hawat.sh` (finds the Node in `.nvmrc` without nvm), restarted 10 seconds after a crash. Log: `~/.hawat/hawat.log`.
+- `local.hawat-models` runs `scripts/ensure-models.sh` once at login: if nothing answers on the model server port it opens the app hidden (default `Bionic`, which serves the LM Studio API on this machine; set `HAWAT_LMS_APP` otherwise), then loads the main model (`HAWAT_MAIN_MODEL`, default `qwen/qwen3.8-27b`) with `HAWAT_MAIN_CONTEXT` tokens (default 100000) if it is not loaded or loaded smaller. The coder model loads on first use. Log: `~/.hawat/models.log`.
+
+`scripts/launchagent.sh status` and `uninstall` do what they say. While the Hawat job is installed, do not also start Hawat by hand: the port is taken. The context is set when the model is loaded; the model's saved default in the app is not changed.
+
 ## Use it from the Claude desktop app (HTTPS proxy mode)
 
 The desktop app always sets its own `ANTHROPIC_BASE_URL`, so the base-URL route above does not work there. What does work (verified 2026-11-13 with Claude Code 2.1.321 in desktop app 5.11492.2) is making Hawat the session's HTTPS proxy:
