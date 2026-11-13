@@ -284,3 +284,18 @@ test('GUI API: list, detail, state, toggle and clear', async () => {
     assert.equal(JSON.parse((await send(t.port, { method: 'GET', path: '/__hawat/api/records' })).body.toString()).length, 0);
   } finally { await t.cleanup(); }
 });
+
+test('a browser opening / is sent to the inspector; other requests for / are still forwarded', async () => {
+  const t = await setup();
+  try {
+    const page = await send(t.port, { method: 'GET', path: '/', headers: { accept: 'text/html,application/xhtml+xml' } });
+    assert.equal(page.status, 302);
+    assert.equal(page.headers.location, '/__hawat/');
+    assert.equal(t.anth.received.filter((r) => r.url === '/').length, 0);
+    const api = await send(t.port, { method: 'GET', path: '/', headers: { accept: 'application/json', ...clientHeaders() } });
+    assert.equal(api.status, 200);
+    const got = t.anth.received.find((r) => r.url === '/');
+    assert.ok(got);
+    assert.equal(got.headers.authorization, 'Bearer ' + SECRET);
+  } finally { await t.cleanup(); }
+});

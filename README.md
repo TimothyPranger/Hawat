@@ -32,7 +32,7 @@ The project lives in the Caladan Projects folder, and Caladan is the Atreides ho
 ```bash
 cd "/Users/admin_OLD/Projects/Caladan Projects/hawat"
 node -v            # must be 20 or higher
-npm test           # 13 tests against pretend Anthropic and LM Studio servers
+npm test           # 14 tests against pretend Anthropic and LM Studio servers
 npm run demo       # pretend traffic so you can explore the inspector: open the URL it prints
 npm start          # the real thing
 ```
@@ -80,6 +80,7 @@ Note: `isolation: worktree` gives each worker its own git worktree, which starts
 ## What Hawat guarantees (and the tests prove)
 
 - Requests that are not redirected reach Anthropic with **identical body bytes and headers** (only `Host` and connection-level headers differ), and the response is streamed back unchanged, still compressed if it was compressed.
+- One exception: a browser page request (`Accept: text/html`) for exactly `/` is redirected to the inspector. Claude Code never asks for that; Anthropic's API answers 404 there.
 - Your Claude credentials (`authorization`, `x-api-key`, cookies, `anthropic-beta`) are **never sent to LM Studio**, whatever the rules say. LM Studio only ever sees its own token.
 - Stored records mask credentials (first few characters only). Request and response bodies are shown unmasked because they are your own data; they stay in memory unless you enable file logging.
 - Hawat listens on loopback only, rejects unexpected `Host` headers (DNS rebinding), rejects requests that carry a browser `Origin`, and the inspector's write actions need a same-origin header.

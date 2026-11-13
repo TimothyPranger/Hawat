@@ -477,6 +477,12 @@ function createHawat(cfg) {
       if (!allowedHost(req.headers.host)) return plain(res, 403, 'hawat: unexpected Host header');
       const target = req.url || '/';
       if (target === NS || target.startsWith(NS + '/')) return handleGui(req, res);
+      // A browser opening the bare address lands on the inspector. Only a page request for exactly "/";
+      // anything else (including API clients that do not ask for HTML) is proxied as usual.
+      if (target === '/' && (req.method === 'GET' || req.method === 'HEAD') && /text\/html/i.test(req.headers.accept || '')) {
+        res.writeHead(302, { location: NS + '/', 'cache-control': 'no-store' });
+        return res.end();
+      }
       return handleProxy(req, res);
     };
     run().catch((err) => {

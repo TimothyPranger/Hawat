@@ -82,9 +82,9 @@ everything and reports what it means; the Caladan Projects folder is the Atreide
 
 ## Verification status
 
-- **Verified:** 13 `node:test` tests against fake Anthropic and LM Studio servers (byte-identical
+- **Verified:** 14 `node:test` tests against fake Anthropic and LM Studio servers (byte-identical
   passthrough incl. gzip, no credential leaks to LM Studio, streaming, outage, fallback, client abort, guards).
-  Re-run on Node 22.23.5: 13/13 pass. GUI exercised in headless Chromium in the chat session.
+  Re-run on Node 22.23.5: 14/14 pass. GUI exercised in headless Chromium in the chat session.
 - **Not yet run** against the real LM Studio or the real Anthropic API.
 
 ## UNVERIFIED (check first)
